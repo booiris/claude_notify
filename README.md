@@ -1,82 +1,111 @@
-# 🔨 Claude Notify
+# Claude Notify
 
-Claude Code 任务完成声音通知工具。当 Claude 完成任务时，自动播放魔兽争霸农民（Peon）语音提醒你。
-
-> *"Work, work."* — Peon
+Claude Code 完成任务后，通过本地 Web 页面播放提示音的通知工具。默认音效使用《魔兽争霸》Peon 语音。
 
 ## 功能
 
-- 🔊 Claude 完成任务后自动播放声音通知
-- 🎮 魔兽争霸 Peon 经典语音（"Work, work"、"Okie dokie" 等）
-- 🌐 Web UI 界面，支持音量调节、音效预览、通知历史
-- 🔇 多标签页自动去重，同时只在一个标签页播放声音
-- ⚡ 基于 SSE（Server-Sent Events），实时推送
+- Claude Code 任务结束时自动推送通知
+- Web UI 支持解锁声音、调节音量、测试音效
+- 使用 SSE 实时推送通知到浏览器
+- 记录当前页面会话内的通知历史
+- 多标签页场景下，优先只在一个标签页播放声音
 
-## 工作原理
+## 工作流程
 
+```text
+Claude Code Hook
+  -> notify.sh
+  -> POST /notify
+  -> server.js 广播 SSE
+  -> 浏览器页面收到通知并播放音效
 ```
-Claude Code 完成任务
-       ↓
-Notification Hook 触发
-       ↓
-notify.sh → POST /notify → Server
-       ↓
-Server 通过 SSE 广播到所有浏览器客户端
-       ↓
-浏览器播放 Peon 语音 🔊
+
+## 目录结构
+
+```text
+.
+|-- install.sh          # 安装脚本，写入 Claude Code hooks
+|-- notify.sh           # Hook 调用脚本，向本地服务发送通知
+|-- server.js           # HTTP + SSE 服务
+|-- public/             # Web UI
+`-- sounds/             # 提示音文件
 ```
 
 ## 快速开始
 
 ```bash
-# 克隆仓库
 git clone <repo-url> claude_notify
 cd claude_notify
 
-# 运行安装脚本（检查依赖 + 配置 Claude Code Hook）
 ./install.sh
-
-# 启动通知服务器
 node server.js
-
-# 在浏览器中打开 http://localhost:8888，点击「解锁声音」
 ```
 
-保持浏览器标签页打开，然后正常使用 Claude Code。任务完成时你会听到 Peon 的声音！
+然后在浏览器打开 `http://localhost:8888`，点击“解锁声音”一次。之后正常使用 Claude Code，任务完成时页面会播放提示音。
 
-## 手动安装
+## install.sh 会做什么
 
-如果不想使用安装脚本，可以手动配置：
+安装脚本会：
 
-1. 确保 `notify.sh` 有执行权限：
+- 检查 `node` 和 `curl`
+- 给 `notify.sh` 添加执行权限
+- 更新 `~/.claude/settings.json`
+- 自动注册 `Stop` 和 `PermissionRequest` 两类 hooks
+
+如果配置文件不存在，会自动创建；如果已存在相同 `notify.sh` hook，则跳过重复写入。
+
+## 手动配置
+
+如果不想运行安装脚本，可以手动配置。
+
+1. 赋予执行权限：
 
 ```bash
 chmod +x notify.sh
 ```
 
-2. 编辑 `~/.claude/settings.json`，添加 Notification Hook：
+2. 编辑 `~/.claude/settings.json`，加入：
 
 ```json
 {
   "hooks": {
-    "Notification": [
+    "Stop": [
       {
-        "command": "/absolute/path/to/claude_notify/notify.sh"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/claude_notify/notify.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/claude_notify/notify.sh"
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-> 如果文件中已有其他配置，将 `hooks.Notification` 数组合并进去即可。
+3. 启动服务：
 
-3. 启动服务器：`node server.js`
+```bash
+node server.js
+```
 
-4. 浏览器打开 `http://localhost:8888`，点击「解锁声音」。
+4. 打开 `http://localhost:8888`，点击“解锁声音”。
 
 ## 配置
 
-### 服务器端口
+### 服务端口
 
 ```bash
 PORT=9999 node server.js
@@ -85,50 +114,48 @@ PORT=9999 node server.js
 ### notify.sh 环境变量
 
 | 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `CLAUDE_NOTIFY_HOST` | `localhost` | 通知服务器地址 |
-| `CLAUDE_NOTIFY_PORT` | `8888` | 通知服务器端口 |
+| --- | --- | --- |
+| `CLAUDE_NOTIFY_HOST` | `localhost` | 通知服务地址 |
+| `CLAUDE_NOTIFY_PORT` | `8888` | 通知服务端口 |
 
-修改端口时，服务器和 notify.sh 两侧都需要对应修改：
+例如：
 
 ```bash
-PORT=9999 node server.js                          # 服务器监听 9999
-CLAUDE_NOTIFY_PORT=9999 ./notify.sh "hello"       # 客户端发送到 9999
+PORT=9999 node server.js
+CLAUDE_NOTIFY_PORT=9999 ./notify.sh "build finished"
 ```
 
-### 手动发送通知
+## 手动发送通知
 
 ```bash
-# 通过 notify.sh
-./notify.sh "构建完成！"
+./notify.sh "构建完成"
+```
 
-# 通过 curl
+```bash
 curl -X POST http://localhost:8888/notify \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello, Peon!"}'
+  -d '{"message":"Hello, Peon!"}'
 ```
 
 ## API
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/` | GET | Web UI 页面 |
-| `/events` | GET | SSE 事件流（浏览器订阅） |
-| `/notify` | POST | 发送通知，body: `{"message": "..."}` |
-| `/status` | GET | 服务器状态 `{"ok": true, "clients": N}` |
+| 路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/` | `GET` | Web UI |
+| `/events` | `GET` | SSE 事件流 |
+| `/notify` | `POST` | 发送通知，body: `{"message":"..."}` |
+| `/status` | `GET` | 服务状态，返回连接中的客户端数量 |
 
-## 卸载
+## 注意事项
 
-1. 编辑 `~/.claude/settings.json`，删除 `hooks.Notification` 中包含 `notify.sh` 的条目
-2. 停止服务器（Ctrl+C）
-3. 删除项目目录
+- 浏览器首次播放声音通常需要手动点击一次“解锁声音”
+- 通知历史只保存在当前页面内存中，刷新后会清空
+- 多标签页去重依赖 `navigator.locks`；如果浏览器不支持，多个标签页可能同时播放
+- `notify.sh` 默认使用 `curl` 调本地服务，服务未启动时不会收到通知
 
 ## 依赖
 
-- [Node.js](https://nodejs.org) >= 14
+- Node.js 14+
 - curl
-- 现代浏览器（Chrome / Firefox / Edge / Safari）
-
-## 致谢
-
-- Peon 语音素材来自 [PeonPing/peon-ping](https://github.com/PeonPing/peon-ping)
+- 现代浏览器
+- Python 3 可选，仅用于格式化 `notify.sh` 的 JSON 输出
