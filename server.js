@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 
 const PORT = process.env.PORT || 8888;
 
@@ -151,7 +152,29 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res);
 });
 
+function getLocalIps() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Node < 18 uses iface.family === 'IPv4', Node 18+ can deal with either, but we check family safely.
+      if (iface.family === 'IPv4' || iface.family === 4) {
+        if (!iface.internal) {
+          ips.push(iface.address);
+        }
+      }
+    }
+  }
+  return ips;
+}
+
 server.listen(PORT, '0.0.0.0', () => {
+  const ips = getLocalIps();
+  let browserLinks = `║  http://localhost:${String(PORT).padEnd(26)}  ║\n`;
+  ips.forEach(ip => {
+    browserLinks += `║  http://${String(ip + ':' + PORT).padEnd(35)}  ║\n`;
+  });
+
   console.log(`
 ╔══════════════════════════════════════════════╗
 ║       🔨 Claude Notify Server (Peon)        ║
@@ -160,7 +183,7 @@ server.listen(PORT, '0.0.0.0', () => {
 ║  Server running on port ${String(PORT).padEnd(20)}  ║
 ║                                              ║
 ║  Open in browser:                            ║
-║  http://localhost:${String(PORT).padEnd(26)}  ║
+${browserLinks.replace(/\n$/, '')}
 ║                                              ║
 ║  Trigger notification:                       ║
 ║  ./notify.sh "message"                       ║
