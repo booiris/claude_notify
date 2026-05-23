@@ -107,22 +107,36 @@ node server.js
 
 ### 服务端口
 
+server.js 端口的解析优先级：命令行参数 > `CLAUDE_NOTIFY_PORT` > `PORT` > 默认 `8888`。
+
 ```bash
-PORT=9999 node server.js
+node server.js 9999                      # 命令行参数
+node server.js --port 9999               # 等价写法
+CLAUDE_NOTIFY_PORT=9999 node server.js   # 环境变量
 ```
+
+服务启动时会把实际端口写入同目录下的 `.notify-port` 文件，`notify.sh` 会自动读取它并连到相同端口，无需重复配置。
 
 ### notify.sh 环境变量
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `CLAUDE_NOTIFY_HOST` | `localhost` | 通知服务地址 |
-| `CLAUDE_NOTIFY_PORT` | `8888` | 通知服务端口 |
+| `CLAUDE_NOTIFY_PORT` | 见下 | 通知服务端口；显式设置后优先级最高 |
 
-例如：
+端口解析优先级：`CLAUDE_NOTIFY_PORT` > `.notify-port` 文件（由 server.js 写入）> `8888`。
+
+因此一般只需在启动 server.js 时指定端口，notify.sh 会自动匹配：
 
 ```bash
-PORT=9999 node server.js
-CLAUDE_NOTIFY_PORT=9999 ./notify.sh "build finished"
+node server.js 9999
+./notify.sh "build finished"   # 自动使用 9999
+```
+
+如果 notify.sh 与 server.js 不在同一台机器上（读不到 `.notify-port`），用环境变量显式指定：
+
+```bash
+CLAUDE_NOTIFY_HOST=192.168.1.10 CLAUDE_NOTIFY_PORT=9999 ./notify.sh "build finished"
 ```
 
 ## 手动发送通知

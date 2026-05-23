@@ -4,7 +4,21 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 
-const PORT = process.env.PORT || 8888;
+// Port resolution priority: CLI arg > CLAUDE_NOTIFY_PORT env > PORT env > 8888
+function resolvePort() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--port' || arg === '-p') return args[i + 1];
+    if (arg.startsWith('--port=')) return arg.slice('--port='.length);
+    if (/^\d+$/.test(arg)) return arg;
+  }
+  return process.env.CLAUDE_NOTIFY_PORT || process.env.PORT || 8888;
+}
+
+const PORT = Number(resolvePort()) || 8888;
+// notify.sh reads this file to auto-discover the running server's port.
+const PORT_FILE = path.join(__dirname, '.notify-port');
 
 // --- SSE Client Management ---
 const clients = new Set();
@@ -169,6 +183,13 @@ function getLocalIps() {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
+  // Persist the runtime port so notify.sh connects to the same port automatically.
+  try {
+    fs.writeFileSync(PORT_FILE, String(PORT));
+  } catch (err) {
+    console.warn(`Warning: could not write ${PORT_FILE}: ${err.message}`);
+  }
+
   const ips = getLocalIps();
   let browserLinks = `║  http://localhost:${String(PORT).padEnd(26)}  ║\n`;
   ips.forEach(ip => {
